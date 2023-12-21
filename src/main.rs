@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
@@ -130,22 +130,33 @@ fn st_open<P: AsRef<Path>>(filename: P, quiet: bool) -> io::Result<Metadata> {
     let metadata = filename.metadata()?;
     let file_size = metadata.size();
 
-    if file_size < 8 {
+    if file_size < 9 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "length less than 8 bytes",
+            "Length less than 9 bytes",
         ));
     }
 
     let mut file = File::open(filename)?;
-    let mut buffer = [0; 8];
+    let mut buffer = [0; 9];
+
     file.read_exact(&mut buffer)?;
 
-    let header_len = u64::from_le_bytes(buffer);
+    let mut hdrsz = [0; 8];
+    hdrsz.clone_from_slice(&buffer[..8]);
+
+    if buffer[8] != 0x7B {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Not a valid safetensors file. Missing 0x7B byte at position 8",
+        ));
+    }
+
+    let header_len = u64::from_le_bytes(hdrsz);
     if 8 + header_len > file_size {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "header extends past end of file",
+            "Header is bigger than the file itself",
         ));
     }
 
@@ -167,6 +178,7 @@ fn st_open<P: AsRef<Path>>(filename: P, quiet: bool) -> io::Result<Metadata> {
     }
 
     let mut header_buf = vec![0; header_len as usize];
+    file.seek(SeekFrom::Start(8))?;
     file.read_exact(&mut header_buf)?;
 
     let json: Root = serde_json::from_slice(&header_buf).unwrap();

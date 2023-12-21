@@ -191,7 +191,7 @@ pub struct Subset {
     pub random_crop: bool,
     pub shuffle_caption: bool,
     pub keep_tokens: u8,
-    pub class_tokens: Option<Vec<String>>,
+    pub class_tokens: Option<String>,
     pub is_reg: bool,
 }
 
